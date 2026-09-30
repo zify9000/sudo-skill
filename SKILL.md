@@ -1,7 +1,7 @@
 ---
 name: sudo-skill
-version: 1.1.0
-description: "Use when a task requires password-authenticated sudo on remote SSH hosts without exposing the password: privileged remote commands, multi-line privileged scripts, same command across hosts with per-host passwords, or probing whether sudo needs a password; Chinese triggers include 远程sudo, sudo密码, sudo脱敏, 提权运维, 批量sudo. DO NOT use for local sudo on the control machine (use SUDO_ASKPASS), NOPASSWD hosts (plain sudo via ssh-skill), root SSH accounts, or sudoers edits (owner-approved fallback only)."
+version: 1.2.0
+description: "Use when a task requires password-authenticated sudo on SSH hosts without exposing the password — including the control machine itself when registered as an SSH alias (loopback): privileged commands, multi-line privileged scripts, same command across hosts with per-host passwords, or probing whether sudo needs a password; Chinese triggers include 远程sudo, sudo密码, sudo脱敏, 提权运维, 批量sudo, 本机sudo. DO NOT use for NOPASSWD hosts (plain sudo via ssh-skill), root SSH accounts, purely local ad-hoc sudo without an alias (use SUDO_ASKPASS), or sudoers edits (owner-approved fallback only)."
 allowed-tools: Bash, Read, Write, Glob
 keywords: sudo,password,privilege,escalation,pass,gpg,ssh,remote,ops,远程sudo,sudo密码,提权,运维
 ---
@@ -42,14 +42,19 @@ Never construct raw `ssh` commands here.
 Use for:
 
 - Privileged commands on SSH hosts where sudo requires a password.
+- The control machine itself, when registered as an SSH alias (loopback).
 - Multi-line privileged scripts on one host.
 - One privileged command across several hosts with different passwords.
 - Probing whether a host's sudo needs a password at all.
 
 Do NOT use for:
 
-- Local sudo on the control machine (see references/fallbacks.md,
-  SUDO_ASKPASS).
+- Local sudo on the control machine *unless* it is registered as an SSH
+  alias (loopback: e.g. `Host laptop` → 127.0.0.1, key auth to self). The
+  alias makes the control machine just another host — one uniform code path
+  for fleet-wide loops — at the cost of an sshd round trip and a dependency
+  on local sshd. For purely local ad-hoc sudo without an alias, use
+  SUDO_ASKPASS (references/fallbacks.md).
 - Hosts already configured NOPASSWD — run plain `sudo` via ssh-skill.
 - SSH accounts that log in as root (no sudo involved).
 - sudoers changes — references/fallbacks.md only, with owner approval.

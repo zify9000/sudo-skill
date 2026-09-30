@@ -38,6 +38,14 @@ pass show "ops/sudo@<alias>" | ssh-skill exec <alias> 'sudo -S -k -p "" <command
 - `references/fallbacks.md` — NOPASSWD whitelists, time-boxed leases,
   `SUDO_ASKPASS` for local sudo, Ansible + vault at scale
 
+## The control machine counts too
+
+Register the control machine as an SSH alias in `~/.ssh/config`
+(`Host laptop` → `127.0.0.1`, key auth to self) and it participates in the
+same workflow — `init.sh` lists it, `sudo_exec.sh` targets it, fleet-wide
+loops include it. `SUDO_ASKPASS` (references/fallbacks.md) remains the
+lighter path for purely local ad-hoc sudo.
+
 ## Requirements
 
 - [ssh-skill](https://github.com/badseal/ssh-skill) v4 (developed and tested

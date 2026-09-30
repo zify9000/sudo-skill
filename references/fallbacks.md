@@ -43,10 +43,14 @@ sudo systemd-run --on-active=60min --unit=sudo-lease-expire \
 
 Never leave a lease behind silently; always verify and report removal.
 
-## 3. Local Sudo: SUDO_ASKPASS
+## 3. Local Sudo: Loopback Alias Or SUDO_ASKPASS
 
-The pipe pattern is for remote hosts. For sudo on the control machine
-itself, back `sudo -A` with the same store:
+Two options for the control machine itself. Preferred for fleet-uniform
+agent workflows: register the machine as an SSH alias in `~/.ssh/config`
+(e.g. `Host laptop` → `127.0.0.1`, key auth to self) and use this skill
+unchanged — the alias participates in `init.sh`, probing, and batch loops
+like any other host. When local sshd is unavailable or the SSH round trip
+is unwanted, back `sudo -A` with the same store:
 
 ```bash
 # ~/.local/bin/askpass-pass  (chmod 700)
