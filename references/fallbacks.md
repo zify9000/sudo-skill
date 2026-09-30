@@ -43,19 +43,23 @@ sudo systemd-run --on-active=60min --unit=sudo-lease-expire \
 
 Never leave a lease behind silently; always verify and report removal.
 
-## 3. Local Sudo: Loopback Alias Or SUDO_ASKPASS
+## 3. Local Sudo: The `local` Pseudo-Alias (native) And SUDO_ASKPASS
 
-Two options for the control machine itself. Preferred for fleet-uniform
-agent workflows: register the machine as an SSH alias in `~/.ssh/config`
-(e.g. `Host laptop` → `127.0.0.1`, key auth to self) and use this skill
-unchanged — the alias participates in `init.sh`, probing, and batch loops
-like any other host. When local sshd is unavailable or the SSH round trip
-is unwanted, back `sudo -A` with the same store:
+For agent-driven local sudo this skill needs no SSH at all — the reserved
+pseudo-alias pipes straight into local `sudo -S`:
+
+```bash
+sudo_exec.sh exec local 'apt list --upgradable'
+```
+
+Its store entry is `ops/sudo@local`; `init.sh` lists and verifies it like
+any other target. For human ad-hoc interactive sudo outside the agent flow,
+`SUDO_ASKPASS` backed by the same store entry also works:
 
 ```bash
 # ~/.local/bin/askpass-pass  (chmod 700)
 #!/bin/sh
-exec pass show local/sudo
+exec pass show ops/sudo@local
 ```
 
 ```bash

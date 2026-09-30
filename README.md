@@ -40,11 +40,16 @@ pass show "ops/sudo@<alias>" | ssh-skill exec <alias> 'sudo -S -k -p "" <command
 
 ## The control machine counts too
 
-Register the control machine as an SSH alias in `~/.ssh/config`
-(`Host laptop` → `127.0.0.1`, key auth to self) and it participates in the
-same workflow — `init.sh` lists it, `sudo_exec.sh` targets it, fleet-wide
-loops include it. `SUDO_ASKPASS` (references/fallbacks.md) remains the
-lighter path for purely local ad-hoc sudo.
+The reserved pseudo-alias `local` targets the control machine directly — no
+SSH, no sshd, nothing to configure:
+
+```bash
+sudo_exec.sh exec local 'apt list --upgradable'   # store entry: ops/sudo@local
+```
+
+It participates in `init.sh` and fleet-wide loops like any other target.
+`SUDO_ASKPASS` (references/fallbacks.md) remains available for human
+interactive sudo outside the agent flow.
 
 ## Requirements
 

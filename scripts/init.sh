@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
 # init.sh — guided onboarding for sudo-skill: one password-store entry per
-# ssh-skill alias.
+# ssh-skill alias, plus the "local" pseudo-alias for the control machine.
 #
 # Modes:
 #   init.sh             interactive entry setup; the OWNER runs this in their
 #                       own terminal. Passwords go straight into `pass insert`
 #                       with hidden terminal input — they never appear on the
 #                       command line, in files, or in any agent transcript.
-#   init.sh --probe     same, but first probes each host and auto-skips hosts
-#                       whose sudo is already NOPASSWD.
-#   init.sh --check     list aliases and whether a store entry exists.
+#   init.sh --probe     same, but first probes each target and auto-skips
+#                       targets whose sudo is already NOPASSWD.
+#   init.sh --check     list targets and whether a store entry exists.
 #                       Non-interactive and agent-safe (no decryption).
-#   init.sh --verify    end-to-end test every existing entry by piping it into
-#                       remote `sudo -S true`. Agent-safe: the secret stays
-#                       inside the pipe.
+#   init.sh --verify    end-to-end test every existing entry: remote entries
+#                       via ssh-skill, the local entry directly against the
+#                       control machine's sudo. Agent-safe.
 #
 # Environment:
-#   SSH_SKILL_ROOT    ssh-skill directory (default: ~/.agents/skills/ssh-skill)
-#   SUDO_ENTRY_PREFIX entry name prefix  (default: ops/sudo@)
-#   PASSWORD_STORE_DIR pass store dir    (default: ~/.password-store)
+#   SSH_SKILL_ROOT     ssh-skill directory (default: ~/.agents/skills/ssh-skill)
+#   SUDO_ENTRY_PREFIX  entry name prefix   (default: ops/sudo@)
+#   SUDO_LOCAL_ALIAS   pseudo-alias for the control machine (default: local)
+#   PASSWORD_STORE_DIR pass store dir      (default: ~/.password-store)
 
 set -euo pipefail
 
@@ -28,28 +29,26 @@ SSH_SKILL_ROOT="${SSH_SKILL_ROOT:-$HOME/.agents/skills/ssh-skill}"
 SSH_SKILL_CLI="$SSH_SKILL_ROOT/scripts/ssh_skill.py"
 STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
 ENTRY_PREFIX="${SUDO_ENTRY_PREFIX:-ops/sudo@}"
+LOCAL_ALIAS="${SUDO_LOCAL_ALIAS:-local}"
 
 die() { printf 'init: %s\n' "$*" >&2; exit 2; }
 
 list_aliases() {
   [ -f "$SSH_SKILL_CLI" ] || die "ssh-skill CLI not found at $SSH_SKILL_CLI (set SSH_SKILL_ROOT)"
-  python3 "$SSH_SKILL_CLI" config list-servers \
+  python3 "$SSH_SKILL_CLI" config list-servers < /dev/null \
     | python3 -c 'import json,sys; print("\n".join(s["alias"] for s in json.load(sys.stdin)["data"]["servers"]))'
+  printf '%s\n' "$LOCAL_ALIAS"
 }
 
 entry_exists() { [ -f "$STORE_DIR/$ENTRY_PREFIX$1.gpg" ]; }
 
 probe_host() {
-  # Echoes exactly one marker line (SUDO_NOPASSWD / SUDO_NEEDS_PASSWORD),
-  # or nothing on probe failure. Only the JSON data.stdout field is
-  # inspected — the result's echoed command text also contains the marker
-  # strings and would false-match a naive grep.
-  # stdin is closed explicitly: a probe must never consume the caller's
-  # terminal input, and an open/flooded stdin can stall the exec transport.
-  # --timeout bounds unreachable hosts.
-  python3 "$SSH_SKILL_CLI" exec "$1" \
-    'sudo -n true 2>/dev/null && echo SUDO_NOPASSWD || echo SUDO_NEEDS_PASSWORD' \
-    --timeout 30 < /dev/null 2>/dev/null \
+  # Delegates to sudo_exec.sh probe, which handles remote aliases via
+  # ssh-skill and the local pseudo-alias directly (no SSH). Echoes exactly
+  # one marker line, or nothing on probe failure. Only the JSON data.stdout
+  # field is inspected — the echoed command text in the result also carries
+  # the marker strings and would false-match a naive grep.
+  "$SUDO_EXEC" probe "$1" 2>/dev/null \
     | python3 -c '
 import json, sys
 try:
@@ -69,6 +68,7 @@ case "$mode" in
   --check)
     for alias in $(list_aliases); do
       if entry_exists "$alias"; then st="有条目"; else st="缺条目"; fi
+      [ "$alias" = "$LOCAL_ALIAS" ] && st="$st（本机控制端，无需 SSH）"
       printf '%-16s %s\n' "$alias" "$st"
     done
     ;;
@@ -96,12 +96,14 @@ case "$mode" in
     command -v pass >/dev/null 2>&1 || die "pass(1) 未安装"
 
     aliases="$(list_aliases)"
-    [ -n "$aliases" ] || die "未发现任何 SSH 别名"
+    [ -n "$aliases" ] || die "未发现任何目标"
 
-    echo "ssh-skill 中已配置的主机别名："
+    echo "sudo-skill 管理的提权目标（SSH 别名 + 本机伪别名）："
     for alias in $aliases; do
       if entry_exists "$alias"; then mark="[已有条目]"; else mark="[缺条目]"; fi
-      printf '  %-16s %s\n' "$alias" "$mark"
+      suffix=""
+      [ "$alias" = "$LOCAL_ALIAS" ] && suffix="（本机控制端，无需 SSH）"
+      printf '  %-16s %s%s\n' "$alias" "$mark" "$suffix"
     done
     echo
 
@@ -114,7 +116,7 @@ case "$mode" in
         case "$(probe_host "$alias")" in
           SUDO_NOPASSWD) echo ">>> $alias：sudo 已免密（NOPASSWD），无需条目，跳过"; continue ;;
           SUDO_NEEDS_PASSWORD) echo ">>> $alias：sudo 需要密码" ;;
-          *) echo ">>> $alias：探测失败（主机不可达或非 Linux），仍可手动录入" ;;
+          *) echo ">>> $alias：探测失败，仍可手动录入" ;;
         esac
       fi
       printf '为 %s 录入 sudo 密码？[y/N] ' "$alias"
